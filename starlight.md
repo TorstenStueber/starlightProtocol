@@ -1,3 +1,5 @@
+# Starlight Payment Channels Protocol
+
 - two parties: <span style="color:blue">_host_</span> (opens channel) and <span style="color:blue">_guest_</span>
 - both run an <span style="color:blue">_agent_</span>, a server which must be highly available
 - the guest agent must have a public IP or URL, but not host
