@@ -1,5 +1,28 @@
 # Starlight Payment Channels Protocol
 
+- [Introduction](#introduction)
+- [Workflows](#workflows)
+  - [Create a channel](#create-a-channel)
+  - [Payments](#payments)
+  - [Conflict Resolution](#conflict-resolution)
+  - [Host top-up](#host-top-up)
+  - [Cooperative closing](#cooperative-closing)
+  - [Force closing](#force-closing)
+  - [Monitoring](#monitoring)
+- [Reference](#reference)
+  - [State](#state)
+  - [Accounts](#accounts)
+  - [Computed Values](#computed-values)
+  - [Messages](#messages)
+  - [Transactions](#transactions)
+  - [User commands](#user-commands)
+  - [Timers](#timers)
+  - [Fees](#fees)
+  - [Timing parameters](#timing-parameters)
+  - [Stellar protocol background](#stellar-protocol-background)
+
+## Introduction
+
 - two parties: <span style="color:blue">_host_</span> (opens channel) and <span style="color:blue">_guest_</span>
 - both run an <span style="color:blue">_agent_</span>, a server which must be highly available
 - the guest agent must have a public IP or URL, but not host
@@ -14,7 +37,9 @@
 	- `HostRatchetAccount`; only holds minimum balance; used as source account for channel transactions
 	- `GuestRatchetAccount`; only holds minimum balance; used as source account for channel transactions
 
-## Create a channel
+
+## Workflows
+### Create a channel
 - channel is started in the `Start` state
 - host user sends `CreateChannelCmd` to host's agent
 - host
@@ -49,7 +74,7 @@
 		- signers of `EscrowAccount` and the two ratchet accounts are as expected
 	- if any check fails it transitions to `Closed` state
 
-## Payments
+### Payments
 - from <span style="color:blue">_sender_</span> to <span style="color:blue">_recipient_</span>
 - sender user send `ChannelPayCmd` to sender's agent
 	- agent will reject if not in `Open` state or if `ChannelPayCmd.PaymentAmount` is higher than the sender's balance in channel
@@ -80,7 +105,7 @@
 	- put `CurrentRatchetTx = RecipientRatchetTx`, `GuestBalance = NewGuestBalance`, `HostBalance = NewHostBalance`, `PaymentTime = PendingPaymentTime`, `CurrentSettlementTxes = CounterpartyLatestSettlementTxes = {CompletePaymentSettleWithGuestTx, CompletePaymentSettleWithHostTx}` (???)
 	- goes into `Open` state
 
-## Conflict Resolution
+### Conflict Resolution
 - recipient receives `PaymentProposeMsg` in `PaymentProposed` state (so it is also a sender)
 	- if `PendingPaymentAmount > PaymentProposeMsg.PaymentAmount` or (`PendingPaymentAmount = PaymentProposeMsg.PaymentAmount` and recipient is host)
 		- put `RoundNumber += 1`
@@ -92,12 +117,12 @@
 		- put `TheirPaymentAmount = PaymentProposeMsg.PaymentAmount` and `MyPaymentAmount = PendingPaymentAmount`
 		- goes into `AwaitingPaymentMerge` state
 
-## Host top-up
+### Host top-up
 - host user sends `TopUpCmd` to host's agent
 	- agent rejects if channel with `EscrowAccount` does not exist
 	- create and submit `TopUpTx(Amount)`
 
-## Cooperative Closing
+### Cooperative Closing
 - user sends a `CloseChannelCmd` to its agent
 	- this agent is the <span style="color:blue">_closer_</span>; the other the <span style="color:blue">_cooperator_</span>
 - closer
@@ -113,7 +138,7 @@
 		- submit `CurrentRatchetTx`
 		- goes into `AwaitingRatchet` state
 
-## Force closing
+### Force closing
 - user sends a `ForceCloseCmd` to its agent
 	- submit `CurrentRatchetTx`
 	- goes into `AwaitingRatchet` state
@@ -122,7 +147,8 @@
 - agent is in state `AwaitingSettlement` and `CurrentSettlementTxes` get on chain
 	- goes to `Closed` state
 
-## Constant monitoring
+### Monitoring
+The following conditions need to be constantly monitored by both agents and reacted accordingly
 - host and guest monitor `EscrowAccount` for outside payments to the account
 	- if there is such a payment, they increase `HostBalance` by that value
 - host and guest monitor a valid `CooperativeCloseTx` to get on chain
@@ -137,8 +163,10 @@
 		- put `CurrentSettlementTxes` to `CounterpartyLatestSettlementTxes`
 		- if in state `AwaitingSettlement` go to state `AwaitingSettlementMintime`
 
-## State
-### Immutable Channel Information
+## Reference
+
+### State
+#### Immutable Channel Information
 Is stored as long as channel is not in `Start` or `Closed` state
 - `EscrowAccount`
 - `EscrowAccountSequenceNumber`: initial sequence number of `EscrowAccount`
@@ -150,7 +178,7 @@ Is stored as long as channel is not in `Start` or `Closed` state
 - `GuestAccount`
 - `Role` (either "host" or "guest")
 
-### Shared State
+#### Shared State
 Only exists if channel is in an `Open state`, `Payment state`, `Cooperative closing state` or `Force closing state`
 - `RoundNumber`: number of current round
 - `HostBalance`: current channel balance of host
@@ -160,31 +188,31 @@ Only exists if channel is in an `Open state`, `Payment state`, `Cooperative clos
 - `CounterpartyLatestSettlementTxes`: latest settlement transactions for which counterparty has a valid `RatchetTx`, inluding counterparties signature
 - `PaymentTime`: time of latest completed payment (or `FundingTime` if no payment yet)
 
-### Channel States
-#### `Setup State`
+#### Channel States
+##### `Setup State`
 - `Start`: channel neither created nor proposed
 - `SettingUp` (host only): wait for three `SetupAccountTx` to get on chain
 - `ChannelProposed` (host only): after sending `ChannelProposeMsg`; wait for guest's `ChannelAcceptMsg`
 - `AwaitingFunding`: wait for `FundingTx` to get on chain
 - `AwaitingCleanup` (host only): wait for `CleanupTx` to get on chain
-#### `Open state`
+##### `Open state`
 - `Open`: standard open state; channel is open, round not timed out yet, no pending payments or closed attempts
-#### `Payment states`
+##### `Payment states`
 - `PaymentProposed` (sender only): after sending `PaymentProposeMsg`; wait for `PaymentAcceptMsg`
 - `PaymentAccepted` (recipient only): after sending `PaymentAcceptMsg`; wait for `PaymentCompleteMsg`
-#### `Conflict resolution states`
+##### `Conflict resolution states`
 - `AwaitingPaymentMerge`: a sender received a `PaymentProposeMsg` with a higher `PaymentAmount` while in state `PaymentProposed`
 	- wait for another `PaymentProposeMsg`
 	- additional state: `MyPaymentAmount` and `TheirPaymentAmount`
-#### `Force closing states`
+##### `Force closing states`
 - `AwaitingRatchet`: wait for `CurrentRatchetTx` to get on chain
 - `AwaitingSettlementMintime`: wait for minimum time of `CurrentSettlementTxes`
 - `AwaitingSettlement`: wait for `CurrentSettlementTxes` to go on chain
 - `Closed`: channel has been closed
-#### `Cooperative closing states`
+##### `Cooperative closing states`
 - `AwaitingClose`: wait for `CooperativeCloseTx` to get on chain
 
-## Accounts (with account IDs)
+### Accounts
 - id `EscrowAccount`
 	- holds the payment channel funds
 	- created by `SetupAccountTx`
@@ -203,7 +231,7 @@ Only exists if channel is in an `Open state`, `Payment state`, `Cooperative clos
 - id `GuestAccount`
 	- the account of the guest; can be used for all channels of the guest (also as host for another channel)
 
-## Computed Values
+### Computed Values
 are values defined per payment round
 - `RoundSequenceNumber` = `EscrowAccountSequenceNumber + RoundNumber * 4`
 - `PendingPaymentTime`: the `PaymentTime` from the `PaymentProposeMsg`
@@ -222,13 +250,13 @@ are values defined per payment round
 - `RecipientRatchetTx`: `RatchetTx(RecipientRatchetAccount, PendingPaymentTime)` signed with `SenderEscrowPubKey`
 
 
-## Messages
+### Messages
 - every message contains
 	- `Version` (currently 2)
 	- `Body`: specific to message; contains a `EscrowAccount`
 	- `MessageSignature`: a signature of `Version` and `Body` either signed by `HostAccount` or `GuestAccount`, depending on who is sender
 - signatue can be verified by identifying what public key to use (using the `EscrowAccount` in the message or from entry `HostAccount` for `ChannelProposeMsg`)
-### `ChannelProposeMsg`
+#### `ChannelProposeMsg`
 - sent by host
 - field `EscrowAccount`, `GuestAccount`, `HostRatchetAccount`, `GuestRatchetAccount`, `MaxRoundDuration`, `FinalityDelay`, `Feerate`, `HostAmount`, `FundingTime`, `HostAccount`
 - validation (by guest):
@@ -239,7 +267,7 @@ are values defined per payment round
 	- values `MaxRoundDuration`, `FinalityDelay`, and `Feerate` are within bounds accepted by guest
 	- `HostAmount` > 0
 	- latest ledger timestamp between `FundingTime - MaxRoundDuration` and `FundingTime + MaxRoundDuration`
-### `ChannelAcceptMsg`
+#### `ChannelAcceptMsg`
 - sent by guest
 - fields: `EscrowAccount`, `RatchetTx`, `SettleOnlyWithHostTx`
 - validation (by host)
@@ -247,7 +275,7 @@ are values defined per payment round
 	- channel is in `ChannelProposed` state
 	- `RatchetTx` is a valid `RatchetTx(HostRatchetAccount, FundingTime)` transaction and correctly signed
 	- `SettleOnlyWithHostTx` is valid and signed
-### `PaymentProposeMsg`
+#### `PaymentProposeMsg`
 - sent by sender
 - fields: `EscrowAccount`, `RoundNumber`, `PaymentTime`, `PaymentAmount`, `PaymentSettleWithGuestTx`, `PaymentSettleWithHostTx`
 - validation (by recipient):
@@ -262,7 +290,7 @@ are values defined per payment round
 	- `NewGuestBalance >= 0`
 	- `PaymentSettleWithGuestTx` and `PaymentSettleWithHostTx` are valid and correctly signed
 	- if state is `AwaitingPaymentMerge`, then `PaymentProposeMsg.PaymentAmount = TheirPaymentAmount - MyPaymentAmount`
-### `PaymentAcceptMsg`
+#### `PaymentAcceptMsg`
 - sent by recipient
 - fields: `EscrowAccount`, `RoundNumber`, `SenderRatchetTx`, `CompletePaymentSettleWithGuestTx`, `CompletePaymentSettleWithHostTx`
 - validation (by sender):
@@ -270,7 +298,7 @@ are values defined per payment round
 	- channel is in state `PaymentProposed`
 	- `PaymentAcceptMsg.RoundNumber === RoundNumber`
 	- `SenderRatchetTx`, `CompletePaymentSettleWithGuestTx`, `CompletePaymentSettleWithHostTx` are valid and correctly signed
-### `PaymentCompleteMsg`
+#### `PaymentCompleteMsg`
 - sent by sender
 - fields: `EscrowAccount`, `RoundNumber`, `RecipientRatchetTx`
 - validation (by recipient):
@@ -278,7 +306,7 @@ are values defined per payment round
 	- channel is in state `PaymentAccepted`
 	- `PaymentCompleteMsg.RoundNumber === RoundNumber`
 	- `RecipientRatchetTx` is valid and correctly signed
-### `CloseMsg`
+#### `CloseMsg`
 - sent by closer
 - fields: `EscrowAccount`, `CooperativeCloseTx`
 - validation (by cooperator):
@@ -286,12 +314,12 @@ are values defined per payment round
 	- channel is in state `Open`, `PaymentProposed` or `AwaitingClose`
 	- `CooperativeCloseTx` is valid and correctly signed (where _valid_ in case of state `PaymentProposed` refers to pre-payment balances)
 
-## Transactions
-### `SetupAccountTx(AccountId)`
+### Transactions
+#### `SetupAccountTx(AccountId)`
 - source: `HostAccount`
 - sequence number: `HostAccount.SequenceNumber + 1`
 - operations: Create account `AccountId` with starting balance 1 XLM
-### `FundingTx`
+#### `FundingTx`
 - source: `HostAccount`
 - sequence number: `HostAccount.SequenceNumber + 1`
 - maxtime: `FundingTime + FinalityDelay + MaxRoundDuration`
@@ -299,76 +327,76 @@ are values defined per payment round
 	- `EscrowAccount`: pay `HostAmount + 0.5 + 8 * Feerate`, add `GuestAccount` as cosigner
 	- `GuestRatchetAccount`: pay `1 + Feerate`, remove master key as singer, add `EscrowAccount` and `GuestAccount` as signers
 	- `HostRatchetAccount`: pay `0.5 + Feerate`, remove master key as singer, add `EscrowAccount` as signer
-### `CleanupTx`
+#### `CleanupTx`
 - source: `HostAccount`
 - sequence number: `HostAccount.SequenceNumber + 1`
 - operations: merge `EscrowAccount`, `GuestRatchetAccount` and `HostRatchetAccount` into `HostAccount`
-### `RatchetTx(RatchetAccount, PaymentTime)`
+#### `RatchetTx(RatchetAccount, PaymentTime)`
 - source: `RatchedAccount`
 - sequence number: `RatchedAccount.SequenceNumber + 1`
 - maxtime: `PaymentTime + FinalityDelay + MaxRoundDuration`
 - operations: bump sequence of `EscrowAccount` to `RoundSequenceNumber + 1`
-### `SettleOnlyWithHostTx(PaymentTime)`
+#### `SettleOnlyWithHostTx(PaymentTime)`
 - source: `EscrowAccount`
 - sequence number: `RoundSequenceNumber + 2`
 - mintime: `PaymentTime + 2 * FinalityDelay + MaxRoundDuration`
 - operations: merge `EscrowAccount`, `GuestRatchetAccount` and `HostRatchetAccount` into `HostAccount`
-### `SettleWithGuestTx(PaymentTime, GuestAmount)`
+#### `SettleWithGuestTx(PaymentTime, GuestAmount)`
 - source: `EscrowAccount`
 - sequence number: `RoundSequenceNumber + 2`
 - mintime: `PaymentTime + 2 * FinalityDelay + MaxRoundDuration`
 - operations: pay `GuestAmount` from `EscrowAccount` to `GuestAccount`
-### `SettleWithHostTx(PaymentTime)`
+#### `SettleWithHostTx(PaymentTime)`
 - source: `EscrowAccount`
 - sequence number: `RoundSequenceNumber + 3`
 - mintime: `PaymentTime + 2 * FinalityDelay + MaxRoundDuration`
 - operations: merge `EscrowAccount`, `GuestRatchetAccount` and `HostRatchetAccount` into `HostAccount`
-### `CooperativeCloseTx`
+#### `CooperativeCloseTx`
 - source: `EscrowAccount`
 - sequence number: `HostAccount.SequenceNumber + 1`
 - operations:
 	- (only if `GuestBalance > 0`): pay `GuestBalance` from `EscrowAccount` to `GuestAccount`
 	- merge `EscrowAccount`, `GuestRatchetAccount` and `HostRatchetAccount` into `HostAccount`
-### `TopUpTx(TopupAmount)`
+#### `TopUpTx(TopupAmount)`
 - source: `HostAccount`
 - sequence number: `HostAccount.SequenceNumber + 1`
 - operations: pay `TopupAmount` to `EscrowAccount`
 
-## User Commands
-### `CreateChannelCmd`
+### User Commands
+#### `CreateChannelCmd`
 - fields
 	- `Counterparty` (= stellar federation address or stellar account)
 	- `MaxRoundDuration`
 	- `FinalityDelay`
 	- `HostAmount` (the amount for funding the channel)
-### `ChannelPayCmd`
+#### `ChannelPayCmd`
 - fields
 	- `EscrowAccount`
 	- `PaymentAmount`
-### `TopUpCmd`
+#### `TopUpCmd`
 - only possible for host in `Open` state
 - fields
 	- `EscrowAccount`
 	- `Amount`
-### `CloseChannelCmd`
+#### `CloseChannelCmd`
 - only possible for agent in `Open` state
 - fields
 	- `EscrowAccount`
-### `ForceCloseCmd`
+#### `ForceCloseCmd`
 - only possible for agent not in any `Force closing state`
 - fields
 	- `EscrowAccount`
-### `CleanUpCmd`
+#### `CleanUpCmd`
 - only possible for host in `ChannelProposed` state
 - fields: `EscrowAccount`
 - host does
 	- create, sign and submit `CleanupTx` and transition to `AwaitingCleanup` state
 	- if transaction is on chain, transition to `Closed` state
 
-## Timers
+### Timers
 - these timers trigger events when the ledger times reaches their respecive values
 - for every channel there is always at most one timer active
-### `PreFundTimeout`
+#### `PreFundTimeout`
 - only active in state `AwaitingFunding`
 - expires at `FundingTime + FinalityDelay + MaxRoundDuration`
 - on expiry
@@ -376,30 +404,30 @@ are values defined per payment round
 		- create, sign and submit `CleanupTx` and transition to `AwaitingCleanup` state
 		- if transaction is on chain, transition to `Closed` state
 	- guest: transition to `Closed` state
-### `ChannelProposedTimeout`
+#### `ChannelProposedTimeout`
 - only active in state `ChannelProposed`
 - expired at `FundingTime + MaxRoundDuration`
 - on expiry (host only)
 	- create, sign and submit `CleanupTx` and transition to `AwaitingCleanup` state
 	- if transaction is on chain, transition to `Closed` state
-### `RoundTimeout`
+#### `RoundTimeout`
 - only active in state `Open`, `PaymentProposed`, `PaymentAccepted` or `AwaitingClose`
 - expires at `PaymentTime + MaxRoundDuration`
 - on expiry
 	- submit `CurrentRatchetTx`
 	- goes into `AwaitingRatchet` state
-### `SettlementMintimeTimeout`
+#### `SettlementMintimeTimeout`
 - only active in state `AwaitingSettlementMintime`
 - expires at mintime of `CurrentSettlementTxes`
 - on expiry
 	- submit `CurrentSettlementTxes`
 	- goes to `AwaitingSettlement` state
 
-## Fees
+### Fees
 - the `Feerate` parameter of a channel determines the fees for transactions with source `EscrowAccount`, `HostRatchetAccount` or `GuestRatchetAccount` (i.e, `Feerate` times number of transactions)
 - should be higher than 100 stroops to make sure that these transactions get included promptly in the ledger (for safety reasons)
 
-## Timing Parameters
+### Timing Parameters
 if set too low, then liveness and safety set at risk; if set too high, then unnecessary delays
 - `MaxRoundDuration`
 	- if one party initiates round `R` when ledger timestamp is `T`, then parties should by able to complete round `R+1` before ledger timestamp > `T + MaxRoundDuration`
@@ -408,7 +436,7 @@ if set too low, then liveness and safety set at risk; if set too high, then unne
 	- if any event happens on ledger at timestamp `T`, then a party should be able to observe that, create and submit a new transaction and have it included on ledger before `T + FinalityDelay`
 
 
-## Stellar Protocol Background
+### Stellar Protocol Background
 - each accounts starts with a single <span style="color:blue">_signer_</span>, the <span style="color:blue">_master key_</span> (= <span style="color:blue">_account ID_</span>) and minimum balance 1 XLM
 - every additional signer requires 0.5 XLM additional minimum balance
 - every account has a <span style="color:blue">_sequence number_</span>
@@ -419,7 +447,8 @@ if set too low, then liveness and safety set at risk; if set too high, then unne
 - a transaction <span style="color:blue">_fails_</span> if any of the operations fails
 	- (!!!) *no operations are executed but the transaction is still included in the ledger, sequence number incremented and transaction fees paid*
 
-## Synonyms
+## Used Synonyms
+The following notions are (almost) used synonymously in the original protocol definition. In this document we only ever use the first name on every line.
 - `HostAccount` = `HostAccountKey`
 - `GuestAccount` = `GuestAccountKey` = `GuestEscrowPubKey`
 - `EscrowAccount` = `HostEscrowPubKey` = `ChannelID`
