@@ -1,11 +1,12 @@
 Initially both parties are in the `Start` state
 
 # Preface
-- each party has a <span style="color:blue">_user_</span>, an <span style="color:blue">_agent_</span> and an account
+- each party has a **user**, an **agent** and an account
   - `HostAccount`, created account, not multisig
   - `GuestAcount`, created account, not multisig
-- the user can sends <span style="color:blue">_commands_</span> to its own agent; the agents can send <span style="color:blue">_messages_</span> to each other
-- a channel is identified by an
+- the user can send **commands** to its own agent; the agents can send **messages** to each other
+  - there are 6 commands: `CreateChannelCmd`, `ChannelPayCmd`, `TopUpCmd`, `CloseChannelCmd`, `ForceCloseCmd`, `CleanUpCmd`
+  - there are 6 messages: `ChannelProposeMsg`, `ChannelAcceptMsg`, `PaymentProposeMsg`, `PaymentAcceptMsg`, `PaymentCompleteMsg`, `CloseMsg`
 - each agent stores the following values for every channel (where a channel is identified by the `EscrowAccountId`):
   - `const MaxRoundDuration: Duration`
   - `const FinalityDelay: Duration`
@@ -31,7 +32,7 @@ Initially both parties are in the `Start` state
   - `SettleWithHostTx: Transaction` (optional, only used during payment)
   - `TheirPaymentAmount: uint` (optional, only used in state `AwaitingPaymentMerge`)
   - `MyPaymentAmount: uint` (optional, only used in state `AwaitingPaymentMerge`)
-- in addition to that it maintains a <span style="color:blue">_state_</span> which can be either one of the value:
+- in addition to that it maintains a **state** which can be either one of the value:
   - `Start, SettingUp, ChannelProposed, AwaitingFunding, AwaitingCleanup,
   Open, PaymentProposed, PaymentAccepted, AwaitingPaymentMerge, AwaitingRatchet,
   AwaitingSettlementMintime, AwaitingSettlement, Closed, AwaitingClose`
@@ -111,7 +112,7 @@ Both agents start in the `Start` state for a new channel.
   - let
     - `GuestSettleWithHostTxSig = sign(SettleWithHostTx, CosignerSecret)`
     - `GuestRatchetSig = sign(RatchetTx, CosignerSecret)`
-    - <span style="color:red">This is an attack vector; guest blindly sings a transaction that merges some unknown accounts into `HostAccount` without proving that `HostAccount` has any rights to them; our one-way scheme instead lets host create these transactions and already signs them before sending them to guest, which proves to guest that this is legit</span>
+    - _This is an attack vector; guest blindly sings a transaction that merges some unknown accounts into `HostAccount` without proving that `HostAccount` has any rights to them; our one-way scheme instead lets host create these transactions and already signs them before sending them to guest, which proves to guest that this is legit_
   - send a `ChannelAcceptMsg` to host with fields
     - `EscrowAccountId: id(EscrowAccount)`
     - `GuestSettleWithHostTxSig`
@@ -148,10 +149,10 @@ Both agents start in the `Start` state for a new channel.
     - reload `EscrowAccount`, `HostRatchetAccount`, `GuestRatchetAccount` from horizon
     - check
       - `sequenceNumber(EscrowAccount) === SequenceNumber`
-        - <span style="color:red">I removed the sequence number check of GuestRatchetAccount; it was pointless</span>
+        - _I removed the sequence number check of GuestRatchetAccount; it was pointless_
       - balance of `EscrowAccount` is at least `HostAmount + 1.5 + 8 * Feerate`
       - signers of `EscrowAccount`, `GuestRatchetAccount` are as expected
-        - <span style="color:red">I removed the check of HostRatchetAccount; it was pointless</span>
+        - _I removed the check of HostRatchetAccount; it was pointless_
     - if any check fails, then go to `Closed` state, otherwise go to `Open` state
 - if `PaymentTime + FinalityDelay + MaxRoundDuration` expires, then
   - host
@@ -221,7 +222,7 @@ From <span style="color:blue">_sender_</span> to <span style="color:blue">_recip
     - else
       - put
         - `RoundNumber = RoundNumber + 1`
-          - <span style="color:red">This seems to be wrong from my persective; the RoundNumber will be incremented when the next </span>
+          - _This seems to be wrong from my persective; the RoundNumber will be incremented when the next_
         - `TheirPaymentAmount = PaymentProposeMsg.PaymentAmount`
         - `MyPaymentAmount = PendingPaymentAmount`
       - go to `AwaitingPaymentMerge` state
@@ -234,7 +235,7 @@ From <span style="color:blue">_sender_</span> to <span style="color:blue">_recip
       - `PaymentProposeMsg.PaymentTime` is within `MaxRoundDuration` difference of current ledger timestamp
       - `PaymentProposeMsg.PaymentTime` >= `PaymentTime`
       - `NewGuestBalance >= 0`
-        - <span style="color:red">This check is also not needed</span>
+        - _This check is also not needed_
       - `ChannelAcceptMsg.SenderSettleWithGuestSig` is a valid signature of `SettleWithGuestTx` for `CounterCosignerPublic`
       - `ChannelAcceptMsg.SenderSettleWithHostSig` is a valid signature of `SettleWithHostTx` for `CounterCosignerPublic`
       - if state is `AwaitingPaymentMerge`, then `PaymentProposeMsg.PaymentAmount = TheirPaymentAmount - MyPaymentAmount`
@@ -299,7 +300,7 @@ From <span style="color:blue">_sender_</span> to <span style="color:blue">_recip
     - `HostBalance = HostBalance + PendingPaymentAmount` if agent is host, otherwise `HostBalance = HostBalance - PendingPaymentAmount`
     - `PaymentTime = PendingPaymentTime`
     - `CurrentSettlementEnvelopes = CounterpartyLatestSettlementEnvelopes`
-      - <span style="color:red">This is a little optimization</span>
+      - _This is a little optimization_
   - go to `Open` state
 
 ## Cooperative Closing
@@ -400,7 +401,7 @@ The following conditions need to be constantly monitored by both agents and reac
   - otherwise
     - source: `id(EscrowAccount)`
     - sequence number: `sequenceNumber(EscrowAccount) + RoundNumber * 4 + 2`
-      - <span style="color:red">why multiplication by 4; wouldn't 2 be enough?</span>
+      - _why multiplication by 4; wouldn't 2 be enough?_
     - mintime: `Mintime`
     - operations: pay `NewGuestBalance` from `id(EscrowAccount)` to `GuestAccountId`
 
