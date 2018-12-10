@@ -263,7 +263,7 @@ are values defined per payment round
 	- channel with `EscrowAccount` does not exist yet
 	- guest does not have a channel with `HostAccount` as counterparty
 	- `GuestAccount` is correct
-	- the accounts `EscrowAccount`, `HostRatchedAccount`, `GuestRatchetAccount` are created
+	- the accounts `EscrowAccount`, `HostRatchetAccount`, `GuestRatchetAccount` are created
 	- values `MaxRoundDuration`, `FinalityDelay`, and `Feerate` are within bounds accepted by guest
 	- `HostAmount` > 0
 	- latest ledger timestamp between `FundingTime - MaxRoundDuration` and `FundingTime + MaxRoundDuration`
@@ -273,7 +273,7 @@ are values defined per payment round
 - validation (by host)
 	- channel with `EscrowAccount` exists
 	- channel is in `ChannelProposed` state
-	- `RatchetTx` is a valid `RatchetTx(HostRatchetAccount, FundingTime)` transaction and correctly signed
+	- `RatchetTx` is valid and correctly signed
 	- `SettleOnlyWithHostTx` is valid and signed
 #### `PaymentProposeMsg`
 - sent by sender
@@ -311,7 +311,7 @@ are values defined per payment round
 - fields: `EscrowAccount`, `CooperativeCloseTx`
 - validation (by cooperator):
 	- channel with `EscrowAccount` exists
-	- channel is in state `Open`, `PaymentProposed` or `AwaitingClose`
+	- channel is in state `Open`, `PaymentProposed` or `AwaitingClose`x
 	- `CooperativeCloseTx` is valid and correctly signed (where _valid_ in case of state `PaymentProposed` refers to pre-payment balances)
 
 ### Transactions
@@ -325,15 +325,15 @@ are values defined per payment round
 - maxtime: `FundingTime + FinalityDelay + MaxRoundDuration`
 - operations:
 	- `EscrowAccount`: pay `HostAmount + 0.5 + 8 * Feerate`, add `GuestAccount` as cosigner
-	- `GuestRatchetAccount`: pay `1 + Feerate`, remove master key as singer, add `EscrowAccount` and `GuestAccount` as signers
-	- `HostRatchetAccount`: pay `0.5 + Feerate`, remove master key as singer, add `EscrowAccount` as signer
+	- `GuestRatchetAccount`: pay `1 + Feerate`, remove master key as signer, add `EscrowAccount` and `GuestAccount` as signers
+	- `HostRatchetAccount`: pay `0.5 + Feerate`, remove master key as signer, add `EscrowAccount` as signer
 #### `CleanupTx`
 - source: `HostAccount`
 - sequence number: `HostAccount.SequenceNumber + 1`
 - operations: merge `EscrowAccount`, `GuestRatchetAccount` and `HostRatchetAccount` into `HostAccount`
 #### `RatchetTx(RatchetAccount, PaymentTime)`
-- source: `RatchedAccount`
-- sequence number: `RatchedAccount.SequenceNumber + 1`
+- source: `RatchetAccount`
+- sequence number: `RatchetAccount.SequenceNumber + 1`
 - maxtime: `PaymentTime + FinalityDelay + MaxRoundDuration`
 - operations: bump sequence of `EscrowAccount` to `RoundSequenceNumber + 1`
 #### `SettleOnlyWithHostTx(PaymentTime)`

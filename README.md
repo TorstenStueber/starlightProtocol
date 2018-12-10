@@ -1,3 +1,5 @@
 # Stellar Payment Channels
 
-* Starlight Protocol: see [here](starlight.md)
+* Starlight Protocol:
+	* [Overview](starlight.md)
+	* [Rigorous Specification](rigorous.md)
