@@ -32,12 +32,12 @@ Initially both parties are in the `Start` state
   - `SettleWithHostTx: Transaction` (optional, only used during payment)
   - `TheirPaymentAmount: uint` (optional, only used in state `AwaitingPaymentMerge`)
   - `MyPaymentAmount: uint` (optional, only used in state `AwaitingPaymentMerge`)
-- in addition to that it maintains a **state** which can be either one of the value:
+- in addition to that it maintains a **state** which can be either one of the values:
   - `Start, SettingUp, ChannelProposed, AwaitingFunding, AwaitingCleanup,
   Open, PaymentProposed, PaymentAccepted, AwaitingPaymentMerge, AwaitingRatchet,
   AwaitingSettlementMintime, AwaitingSettlement, Closed, AwaitingClose`
 
-# Flows
+# Workflows
 ## Create a channel
 Both agents start in the `Start` state for a new channel.
 
@@ -342,12 +342,12 @@ From <span style="color:blue">_sender_</span> to <span style="color:blue">_recip
 - once it observes that `CurrentRatchetEnvelope` is on chain
   - go to `AwaitingSettlementMintime` state
 
-## Agent in `AwaitingSettlementMintime` state
+### Agent in `AwaitingSettlementMintime` state
 - if mintime of `CurrentSettlementEnvelopes` expires
   - submit `CurrentSettlementEnvelopes`
   - go to `AwaitingSettlement` state
 
-## Agent in `AwaitingSettlement` state
+### Agent in `AwaitingSettlement` state
 - once it observes that `CurrentSettlementEnvelopes` is on chain
   - go to `Closed` state
 
