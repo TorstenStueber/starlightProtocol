@@ -18,7 +18,7 @@ Initially both parties are in the `Start` state
   - `const CounterCosignerPublic: PublicKey`
   - `const HostAccountId: string`
   - `const GuestAccountId: string`
-  - `const Role: "Role"` or `"Guest"`
+  - `const Role: "Host"` or `"Guest"`
   - `RoundNumber: uint`
   - `HostBalance: uint`
   - `GuestBalance: uint`
@@ -174,7 +174,7 @@ From <span style="color:blue">_sender_</span> to <span style="color:blue">_recip
   - command contains
     - `EscrowAccountId`
     - `PaymentAmount`
-  - let `SenderBalance = HostBalance` if agent is host, otherwise `SenderBalance = GuestBalance`
+  - let `SenderBalance = HostBalance` if `Role === "Host"`, otherwise `SenderBalance = GuestBalance`
   - validate `ChannelPayCmd`
     - `ChannelPayCmd.PaymentAmount <= SenderBalance`
   - put
@@ -182,7 +182,7 @@ From <span style="color:blue">_sender_</span> to <span style="color:blue">_recip
     - `PendingPaymentAmount = ChannelPayCmd.PaymentAmount`
     - `RoundNumber = RoundNumber + 1`
   - label `sendPaymentProposeMsg` (jump destination from somewhere else)
-  - let `NewGuestBalance = GuestBalance + PendingPaymentAmount` if agent is host, otherwise `NewGuestBalance = GuestBalance - PendingPaymentAmount`
+  - let `NewGuestBalance = GuestBalance + PendingPaymentAmount` if `Role === "Host"`, otherwise `NewGuestBalance = GuestBalance - PendingPaymentAmount`
   - create `SettleWithGuestTx(NewGuestBalance, EscrowAccount, GuestAccountId, RoundNumber, PendingPaymentTime + 2 * FinalityDelay + MaxRoundDuration)`
   - create `SettleWithHostTx(NewGuestBalance, EscrowAccount, GuestRatchetAccount, HostRatchetAccount, RoundNumber, PendingPaymentTime + 2 * FinalityDelay + MaxRoundDuration)`
   - let
@@ -201,20 +201,20 @@ From <span style="color:blue">_sender_</span> to <span style="color:blue">_recip
     - `EscrowAccountId`
     - `Amount`
   - validate
-    - agent is host
+    - `Role === "Host"`
   - create `TopUpTx(HostAccount, EscrowAccount, TopUpCmd.Amount)`
   - sign `TopUpTx` with `secretKey(HostAccount)`
   - submit `TopUpTx`
 
 ### Agent in `Open`, `PaymentProposed` or `AwaitingPaymentMerge` state
 - if receives `PaymentProposeMsg`
-  - let `SenderBalance = HostBalance` if agent is guest, otherwise `SenderBalance = GuestBalance`
+  - let `SenderBalance = HostBalance` if `Role === "Guest"`, otherwise `SenderBalance = GuestBalance`
   - validate
     - `SenderBalance >= PaymentProposeMsg.PaymentAmount > 0`
   - if state is `PaymentProposed`
     - validate
       - `RoundNumber === PaymentProposeMsg.RoundNumber`
-    - if `PendingPaymentAmount > PaymentProposeMsg.PaymentAmount` or (`PendingPaymentAmount === PaymentProposeMsg.PaymentAmount` and agent is host)
+    - if `PendingPaymentAmount > PaymentProposeMsg.PaymentAmount` or (`PendingPaymentAmount === PaymentProposeMsg.PaymentAmount` and `Role === "Host"`)
       - put
         - `RoundNumber = RoundNumber + 1`
         - `PendingPaymentAmount = PendingPaymentAmount - PaymentProposeMsg.PaymentAmount`
@@ -227,7 +227,7 @@ From <span style="color:blue">_sender_</span> to <span style="color:blue">_recip
         - `MyPaymentAmount = PendingPaymentAmount`
       - go to `AwaitingPaymentMerge` state
   - else
-    - let `NewGuestBalance = GuestBalance + PaymentProposeMsg.PaymentAmount` if agent is guest, otherwise `NewGuestBalance = GuestBalance - PaymentProposeMsg.PaymentAmount`
+    - let `NewGuestBalance = GuestBalance + PaymentProposeMsg.PaymentAmount` if `Role === "Guest"`, otherwise `NewGuestBalance = GuestBalance - PaymentProposeMsg.PaymentAmount`
     - create `SettleWithGuestTx(NewGuestBalance, EscrowAccount, GuestAccountId, PaymentProposeMsg.RoundNumber, PaymentProposeMsg.PaymentTime + 2 * FinalityDelay + MaxRoundDuration)`
     - create `SettleWithHostTx(NewGuestBalance, EscrowAccount, GuestRatchetAccount, HostRatchetAccount, PaymentProposeMsg.RoundNumber, PaymentProposeMsg.PaymentTime + 2 * FinalityDelay + MaxRoundDuration)`
     - validate
@@ -243,7 +243,7 @@ From <span style="color:blue">_sender_</span> to <span style="color:blue">_recip
       - `RoundNumber = PaymentProposeMsg.RoundNumber`
       - `PendingPaymentAmount = PaymentProposeMsg.PaymentAmount`
       - `PendingPaymentTime = PaymentProposeMsg.PaymentTime`
-    - let `SenderRatchetAccount = HostRatchetAccount` if agent is guest, `GuestRatchetAccount` otherwise
+    - let `SenderRatchetAccount = HostRatchetAccount` if `Role === "Guest"`, `GuestRatchetAccount` otherwise
     - create `RatchetTx(SenderRatchetAccount, EscrowAccount, sequenceNumber(EscrowAccount) + RoundNumber * 4 + 1, PendingPaymentTime + FinalityDelay + MaxRoundDuration)`
     - let
       - `RecipientRatchetSig = sign(RatchetTx, CosignerSecret)`
@@ -262,21 +262,21 @@ From <span style="color:blue">_sender_</span> to <span style="color:blue">_recip
 
 ### Agent in `PaymentProposed` state
 - if receives `PaymentAcceptMsg`
-  - let `SenderRatchetAccount = HostRatchetAccount` if agent is host, `GuestRatchetAccount` otherwise
+  - let `SenderRatchetAccount = HostRatchetAccount` if `Role === "Host"`, `GuestRatchetAccount` otherwise
   - create `SenderRatchetTx = RatchetTx(SenderRatchetAccount, EscrowAccount, sequenceNumber(EscrowAccount) + RoundNumber * 4 + 1, PendingPaymentTime + FinalityDelay + MaxRoundDuration)`
   - validate `PaymentAcceptMsg`
     - `PaymentAcceptMsg.RoundNumber === RoundNumber`
     - `ChannelAcceptMsg.RecipientRatchetSig` is a valid signature of `SenderRatchetTx` for `CounterCosignerPublic`
     - `ChannelAcceptMsg.RecipientSettleWithGuestSig` is a valid signature of `SettleWithGuestTx` for `CounterCosignerPublic`
     - `ChannelAcceptMsg.RecipientSettleWithHostSig` is a valid signature of `SettleWithHostTx` for `CounterCosignerPublic`
-  - let `RecipientRatchetAccount = HostRatchetAccount` if agent is guest, `GuestRatchetAccount` otherwise
+  - let `RecipientRatchetAccount = HostRatchetAccount` if `Role === "Guest"`, `GuestRatchetAccount` otherwise
   - create `RecipientRatchetTx = RatchetTx(RecipientRatchetAccount, EscrowAccount, sequenceNumber(EscrowAccount) + RoundNumber * 4 + 1, PendingPaymentTime + FinalityDelay + MaxRoundDuration)`
   - let
     - `SenderRecipientRatchetSig = sign(RecipientRatchetTx, CosignerSecret)`
   - put
     - `CurrentRatchetEnvelope = (SenderRatchetTx, ChannelAcceptMsg.RecipientRatchetSig, sign(SenderRatchetTx, CosignerSecret))`
-    - `GuestBalance = GuestBalance + PendingPaymentAmount` if agent is host, otherwise `GuestBalance = GuestBalance - PendingPaymentAmount`
-    - `HostBalance = HostBalance + PendingPaymentAmount` if agent is guest, otherwise `HostBalance = HostBalance - PendingPaymentAmount`
+    - `GuestBalance = GuestBalance + PendingPaymentAmount` if `Role === "Host"`, otherwise `GuestBalance = GuestBalance - PendingPaymentAmount`
+    - `HostBalance = HostBalance + PendingPaymentAmount` if `Role === "Guest"`, otherwise `HostBalance = HostBalance - PendingPaymentAmount`
     - `PaymentTime = PendingPaymentTime`
     - `CurrentSettlementEnvelopes = CounterpartyLatestSettlementEnvelopes` to the array with entries
       - `(SettleWithGuestTx, ChannelAcceptMsg.RecipientSettleWithGuestSig, sign(SettleWithGuestTx, CosignerSecret))`
@@ -289,15 +289,15 @@ From <span style="color:blue">_sender_</span> to <span style="color:blue">_recip
 
 ### Agent in `PaymentAccepted` state
 - if receives `PaymentCompleteMsg`
-  - let `RecipientRatchetAccount = HostRatchetAccount` if agent is host, `GuestRatchetAccount` otherwise
+  - let `RecipientRatchetAccount = HostRatchetAccount` if `Role === "Host"`, `GuestRatchetAccount` otherwise
   - create `RatchetTx(RecipientRatchetAccount, EscrowAccount, sequenceNumber(EscrowAccount) + RoundNumber * 4 + 1, PendingPaymentTime + FinalityDelay + MaxRoundDuration)`
   - validate `PaymentCompleteMsg`
     - `PaymentCompleteMsg.RoundNumber === RoundNumber`
     - `ChannelAcceptMsg.SenderRatchetSig` is a valid signature of `RatchetTx` for `CounterCosignerPublic`
   - put
     - `CurrentRatchetEnvelope = (RatchetTx, ChannelAcceptMsg.SenderRatchetSig, sign(RatchetTx, CosignerSecret))`
-    - `GuestBalance = GuestBalance + PendingPaymentAmount` if agent is guest, otherwise `GuestBalance = GuestBalance - PendingPaymentAmount`
-    - `HostBalance = HostBalance + PendingPaymentAmount` if agent is host, otherwise `HostBalance = HostBalance - PendingPaymentAmount`
+    - `GuestBalance = GuestBalance + PendingPaymentAmount` if `Role === "Guest"`, otherwise `GuestBalance = GuestBalance - PendingPaymentAmount`
+    - `HostBalance = HostBalance + PendingPaymentAmount` if `Role === "Host"`, otherwise `HostBalance = HostBalance - PendingPaymentAmount`
     - `PaymentTime = PendingPaymentTime`
     - `CurrentSettlementEnvelopes = CounterpartyLatestSettlementEnvelopes`
       - _This is a little optimization_
