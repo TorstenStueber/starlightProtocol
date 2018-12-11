@@ -8,34 +8,92 @@ Initially both parties are in the `Start` state
   - there are 6 commands: `CreateChannelCmd`, `ChannelPayCmd`, `TopUpCmd`, `CloseChannelCmd`, `ForceCloseCmd`, `CleanUpCmd`
   - there are 6 messages: `ChannelProposeMsg`, `ChannelAcceptMsg`, `PaymentProposeMsg`, `PaymentAcceptMsg`, `PaymentCompleteMsg`, `CloseMsg`
 - each agent stores the following values for every channel (where a channel is identified by the `EscrowAccountId`):
-  - `const MaxRoundDuration: Duration`
-  - `const FinalityDelay: Duration`
-  - `const Feerate: Account`
-  - `const EscrowAccount: Account`
-  - `const HostRatchetAccount: Account`
-  - `const GuestRatchetAccount: Account`
-  - `const CosignerSecret: SecretKey`
-  - `const CounterCosignerPublic: PublicKey`
-  - `const HostAccountId: string`
-  - `const GuestAccountId: string`
-  - `const Role: "Host"` or `"Guest"`
-  - `RoundNumber: uint`
-  - `HostBalance: uint`
-  - `GuestBalance: uint`
-  - `CurrentRatchetEnvelope: TransactionEnvelope` (optional)
-  - `CurrentSettlementEnvelopes: Array<TransactionEnvelope>` (optional)
-  - `CounterpartyLatestSettlementEnvelopes: Array<TransactionEnvelope>` (optional)
-  - `PaymentTime: Date`
-  - `PendingPaymentTime: Date` (optional, only used during payment)
-  - `PendingPaymentAmount: uint` (optional, only used during payment)
-  - `SettleWithGuestTx: Transaction` (optional, only used during payment)
-  - `SettleWithHostTx: Transaction` (optional, only used during payment)
-  - `TheirPaymentAmount: uint` (optional, only used in state `AwaitingPaymentMerge`)
-  - `MyPaymentAmount: uint` (optional, only used in state `AwaitingPaymentMerge`)
-- in addition to that it maintains a **state** which can be either one of the values:
-  - `Start, SettingUp, ChannelProposed, AwaitingFunding, AwaitingCleanup,
-  Open, PaymentProposed, PaymentAccepted, AwaitingPaymentMerge, AwaitingRatchet,
-  AwaitingSettlementMintime, AwaitingSettlement, Closed, AwaitingClose`
+  - `MaxRoundDuration`
+    - a duration, constant throughout the lifetime of one channel
+    - defines the maximal time the channel can stay open after the last payment
+  - `FinalityDelay`
+    - a duration, constant throughout the lifetime of one channel
+    - defines the maximal reaction time for a party to submit the latest ratchet transaction upon observing that the counterparty submitted an out of date ratchet transaction
+  - `Feerate`
+    - an unsigned integer, constant throughout the lifetime of one channel
+    - defines the transaction fees per operation the parties are willing to spend
+  - `EscrowAccount`
+    - an account, constant throughout the lifetime of one channel
+    - the used escrow account, containing the account id and a sequence number
+  - `HostRatchetAccount`
+    - an account, constant throughout the lifetime of one channel
+    - the used host ratchet account, containing the account id and a sequence number
+  - `GuestRatchetAccount`
+    - an account, constant throughout the lifetime of one channel
+    - the used guest ratchet account, containing the account id and a sequence number
+  - `CosignerSecret`
+    - a secret key, constant throughout the lifetime of one channel
+    - the parties secret key for cosigning ratchet and settlement transactions
+  - `CounterCosignerPublic`
+    - a public key, constant throughout the lifetime of one channel
+    - the public key of the counterparties `CosignerSecret` – for validating signatures
+  - `HostAccountId`
+    - a account id, constant throughout the lifetime of one channel
+    - the account id of the host account
+  - `GuestAccountId`
+    - a account id, constant throughout the lifetime of one channel
+    - the account id of the guest account
+  - `Role`
+    - either `"Host"` or `"Guest"`, constant throughout the lifetime of one channel
+    - defines whether this is the host agent or the guest agent
+  - `RoundNumber`
+    - an unsigned integer
+    - the current number of the payment round, will increase by one for every payment inside the channel
+  - `HostBalance`
+    - an unsigned integer
+    - the current balance of host in the channel
+  - `GuestBalance`
+    - an unsigned integer
+    - the current balance of guest in the channel
+  - `CurrentRatchetEnvelope`
+    - a transaction envelope
+    - optional: guest only has this value after the first payment
+    - envelope of the latest ratchet transaction, signed by both parties
+  - `CurrentSettlementEnvelopes`
+    - an array of transaction envelopes
+    - optional: guest only has this value after the first payment
+    - envelopes of the settlement transactions belonging to `CurrentRatchetEnvelope`, signed by both parties
+  - `CounterpartyLatestSettlementEnvelopes`
+    - an array of transaction envelopes, optional
+    - optional: guest only has this value after the first payment
+    - the latest settlement transactions, signed by both parties
+    - usually `CurrentSettlementEnvelopes` and `CounterpartyLatestSettlementEnvelopes` are equal; however, while a recipient of a payment is in state `PaymentAcceptMsg`, this will already be the settlement transaction of the next round (while `CurrentRatchetEnvelope` is still the ratchet of the current roud)
+  - `PaymentTime`
+    - a date
+    - either the date of the channel creation (when there was no payment yet) or the date of the first payment
+  - `PendingPaymentTime`
+    - a date
+    - optional, only used during payment
+    - the time of the currently negotiated payment
+  - `PendingPaymentAmount`
+    - an unsinged integer
+    - optional, only used during payment
+    - the payment amount of the currently negotiated payment
+  - `SettleWithGuestTx`
+    - a transaction
+    - optional, only used during payment
+    - the next settlement transaction for guest
+  - `SettleWithHostTx`
+    - a transaction
+    - optional, only used during payment
+    - the next settlement transaction for host
+  - `TheirPaymentAmount`
+    - an unsinged integer
+    - optional, only used in state `AwaitingPaymentMerge`
+    - the amount paid by the counterparty
+  - `MyPaymentAmount`
+    - an unsinged integer
+    - optional, only used in state `AwaitingPaymentMerge`
+    - the amount paid by this party
+- in addition to that it maintains a **state** for each channel, which can be either one of the values:
+  - `Start`, `SettingUp`, `ChannelProposed`, `AwaitingFunding`, `AwaitingCleanup`,
+  `Open`, `PaymentProposed`, `PaymentAccepted`, `AwaitingPaymentMerge`, `AwaitingRatchet`,
+  `AwaitingSettlementMintime`, `AwaitingSettlement`, `Closed`, `AwaitingClose`
 
 # Workflows
 ## Create a channel
@@ -50,14 +108,14 @@ Both agents start in the `Start` state for a new channel.
     - `HostAmount` (the amount for funding the channel)
   - generate keypairs `EscrowKeypair`, `HostRatchetKeypair`, `GuestRatchetKeypair`
   - choose parameter `Feerate`
-  - determine `GuestAccountId` from `Counterparty` (e.g., using federation server)
+  - determine `GuestAccountId` from `CreateChannelCmd.Counterparty` (e.g., using federation server)
   - put
     - `CosignerSecret = secretKey(EscrowKeypair)`
     - `CounterCosignerPublic = GuestAccountId`
-    - `HostAccountId = id(hostAccount)`
+    - `HostAccountId = id(HostAccount)`
     - `Role = "Host"`
     - `RoundNumber = 1`
-    - `HostBalance = HostAmount`
+    - `HostBalance = CreateChannelCmd.HostAmount`
     - `GuestBalance = 0`
   - create `SetupAccounTxes` consisting of
     - `SetupAccountTx(HostAccount, 1, hostRatchetKeypair)`
@@ -75,10 +133,10 @@ Both agents start in the `Start` state for a new channel.
   - `EscrowAccountId = publicKey(EscrowKeypair)`
   - `HostRatchetAccountId = publicKey(HostRatchetKeypair)`
   - `GuestRatchetAccountId = publicKey(GuestRatchetKeypair)`
-  - `MaxRoundDuration`
-  - `FinalityDelay`
+  - `MaxRoundDuration: CreateChannelCmd.MaxRoundDuration`
+  - `FinalityDelay: CreateChannelCmd.FinalityDelay`
   - `Feerate`
-  - `HostAmount`
+  - `HostAmount: CreateChannelCmd.HostAmount`
   - `PaymentTime`
   - `HostAccountId = id(HostAccount)`
   - `GuestAccountId`
@@ -186,8 +244,8 @@ From <span style="color:blue">_sender_</span> to <span style="color:blue">_recip
   - create `SettleWithGuestTx(NewGuestBalance, EscrowAccount, GuestAccountId, RoundNumber, PendingPaymentTime + 2 * FinalityDelay + MaxRoundDuration)`
   - create `SettleWithHostTx(NewGuestBalance, EscrowAccount, GuestRatchetAccount, HostRatchetAccount, RoundNumber, PendingPaymentTime + 2 * FinalityDelay + MaxRoundDuration)`
   - let
-    -`SenderSettleWithGuestSig = sign(SettleWithGuestTx, CosignerSecret)`
-    -`SenderSettleWithHostSig = sign(SettleWithHostTx, CosignerSecret)`
+    - `SenderSettleWithGuestSig = sign(SettleWithGuestTx, CosignerSecret)`
+    - `SenderSettleWithHostSig = sign(SettleWithHostTx, CosignerSecret)`
   - send a `PaymentProposeMsg` to recipient with fields
     - `EscrowAccountId: id(EscrowAccount)`
     - `RoundNumber`
@@ -401,7 +459,7 @@ The following conditions need to be constantly monitored by both agents and reac
   - otherwise
     - source: `id(EscrowAccount)`
     - sequence number: `sequenceNumber(EscrowAccount) + RoundNumber * 4 + 2`
-      - _why multiplication by 4; wouldn't 2 be enough?_
+      - _why multiplication by 4; wouldn't 3 be enough?_
     - mintime: `Mintime`
     - operations: pay `NewGuestBalance` from `id(EscrowAccount)` to `GuestAccountId`
 
